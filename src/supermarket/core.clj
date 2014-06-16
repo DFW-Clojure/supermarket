@@ -164,6 +164,5 @@
                       :x-label "Number of Stockers"
                       :y-label "Stock Time (s)")))
 
-(def runs (run-simulation 30))
-;; (plot runs)
-
+(def runs (future (run-simulation 40)))
+;; (plot @runs)
