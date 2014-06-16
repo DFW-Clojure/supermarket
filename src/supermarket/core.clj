@@ -69,12 +69,12 @@
 
 (defrecord Item [aisle shelf])
 
-(defn item []
+(defn make-item []
   (Item. (rand-int num-aisles)
          (rand-int shelves-per-aisle)))
 
 (defn make-box []
-  (box-with (repeatedly items-per-box item)))
+  (box-with (repeatedly items-per-box make-item)))
 
 ;; Shelves
 (defrecord Shelf [items acquire release]
