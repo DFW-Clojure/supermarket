@@ -15,4 +15,4 @@ Simulate stockers stocking items in a supermarket.
 - Only two stockers can be in an aisle at a time (all other stockers have to wait to enter the aisle).
 - Only one stocker can be stocking an item on a shelf (other stockers have to wait to stock an item on the same shelf).
 
-Your goal is to find the optimal number of stockers needed to complete the task as fast as possible (too few stockers could result in a longer running time, too many stockers might ressult in lot of queued stockers trying to get to a box, aisle, and shelf).
+Your goal is to find the optimal number of stockers needed to complete the task as fast as possible (too few stockers could result in a longer running time, too many stockers might result in lot of queued stockers trying to get to a box, aisle, and shelf).
