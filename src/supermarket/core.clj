@@ -67,8 +67,7 @@
 (defn box-with [contents]
   (let [items (chan)]
     (onto-chan items contents)
-    (-> (Box. items (chan))
-        (initialize))))
+    (initialize (Box. items (chan)))))
 
 (defrecord Item [aisle shelf])
 
@@ -93,8 +92,7 @@
 
 (defn make-shelf []
   (let [items (chan (dropping-buffer 0))]
-    (-> (Shelf. items (chan))
-        (initialize))))
+    (initialize (Shelf. items (chan)))))
 
 ;; Aisles
 (defrecord Aisle [shelves requests]
@@ -109,9 +107,8 @@
 (make-scarce Aisle stockers-per-aisle :requests)
 
 (defn make-aisle []
-  (-> (Aisle. (vec (repeatedly shelves-per-aisle make-shelf))
-              (chan))
-      (initialize)))
+  (initialize (Aisle. (vec (repeatedly shelves-per-aisle make-shelf))
+                      (chan))))
 
 ;; Stockers
 (defn make-stocker [supermarket]
@@ -144,10 +141,9 @@
 (make-scarce Supermarket 1 :requests)
 
 (defn make-supermarket [num-stockers]
-  (-> (Supermarket. (vec (repeatedly num-aisles make-aisle))
-                    (set (repeatedly num-boxes make-box))
-                    num-stockers (chan))
-      (initialize)))
+  (initialize (Supermarket. (vec (repeatedly num-aisles make-aisle))
+                            (set (repeatedly num-boxes make-box))
+                            num-stockers (chan))))
 
 ;; Simulation
 (defn simulate-stocking [num-stockers]
