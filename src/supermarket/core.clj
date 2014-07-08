@@ -29,7 +29,7 @@
 
 (defprotocol Scarce
   (initialize-lock [resource])
-  (claim [resource f]))
+  (claim [resource work-fn]))
 
 (defn make-scarce [type concurrent-users acquire release]
   (extend type
@@ -44,9 +44,9 @@
        resource)
 
      :claim
-     (fn [resource result-chan]
+     (fn [resource work-fn]
        (go (let [lock (<! (acquire resource))
-                 result (<! result-chan)]
+                 result (<! (work-fn))]
              (>! (release resource) lock)
              result)))}))
 
@@ -55,9 +55,9 @@
   Unpackable
   (unpack [box]
     (claim box
-           (go (when-let [item (<! items)]
-                 (<! (timeout box-search-time))
-                 item)))))
+           #(go (when-let [item (<! items)]
+                  (<! (timeout box-search-time))
+                  item)))))
 
 (make-scarce Box stockers-per-box :acquire :release)
 
@@ -81,10 +81,10 @@
   Stockable
   (stock [shelf item]
     (claim shelf
-           (go (when item
-                 (<! (timeout shelf-stock-time))
-                 (>! items item)
-                 item)))))
+           #(go (when item
+                  (<! (timeout shelf-stock-time))
+                  (>! items item)
+                  item)))))
 
 (make-scarce Shelf stockers-per-shelf :acquire :release)
 
@@ -98,10 +98,10 @@
   Stockable
   (stock [aisle item]
     (claim aisle
-           (go (when-let [shelf (shelves (:shelf item))]
-                 (<! (timeout aisle-travel-time))
-                 (<! (stock shelf item))
-                 item)))))
+           #(go (when-let [shelf (shelves (:shelf item))]
+                  (<! (timeout aisle-travel-time))
+                  (<! (stock shelf item))
+                  item)))))
 
 (make-scarce Aisle stockers-per-aisle :acquire :release)
 
@@ -133,10 +133,10 @@
 
   (stock [supermarket]
     (claim supermarket
-           (go (let [stockers (repeatedly num-stockers
-                                          #(make-stocker supermarket))]
-                 (<! (async/into [] (async/merge stockers)))
-                 :done)))))
+           #(go (let [stockers (repeatedly num-stockers
+                                           (fn [] (make-stocker supermarket)))]
+                  (<! (async/into [] (async/merge stockers)))
+                  :done)))))
 
 (make-scarce Supermarket 1 :acquire :release)
 
