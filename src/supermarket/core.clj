@@ -2,7 +2,7 @@
   (:require [clojure.core.async
              :as async
              :refer [go go-loop >! <! <!! >!! chan onto-chan timeout
-                     dropping-buffer]]
+                     dropping-buffer close!]]
             [incanter.core :refer [view]]
             [incanter.charts :refer [scatter-plot]]))
 
@@ -28,30 +28,33 @@
   (unpack [container]))
 
 (defprotocol Scarce
-  (initialize-lock [resource])
-  (claim [resource work-fn]))
+  (initialize [resource])
+  (claim [resource task]))
 
-(defn make-scarce [type concurrent-users acquire release]
+(defrecord Request [task response])
+
+(defn make-scarce [type concurrent-users requests]
   (extend type
     Scarce
-    {:initialize-lock
+    {:initialize
      (fn [resource]
        (doseq [_ (range concurrent-users)]
          (go-loop []
-           (>! (acquire resource) :lock)
-           (<! (release resource))
-           (recur)))
+           (when-let [{:keys [task response]} (<! (requests resource))]
+             (if-let [result (<! (task))]
+               (>! response result)
+               (close! response))
+             (recur))))
        resource)
 
      :claim
-     (fn [resource work-fn]
-       (go (let [lock (<! (acquire resource))
-                 result (<! (work-fn))]
-             (>! (release resource) lock)
-             result)))}))
+     (fn [resource task]
+       (go (let [response (chan)]
+             (>! (requests resource) (Request. task response))
+             (<! response))))}))
 
 ;; Boxes
-(defrecord Box [items acquire release]
+(defrecord Box [items requests]
   Unpackable
   (unpack [box]
     (claim box
@@ -59,13 +62,13 @@
                   (<! (timeout box-search-time))
                   item)))))
 
-(make-scarce Box stockers-per-box :acquire :release)
+(make-scarce Box stockers-per-box :requests)
 
 (defn box-with [contents]
   (let [items (chan)]
     (onto-chan items contents)
-    (-> (Box. items (chan) (chan))
-        (initialize-lock))))
+    (-> (Box. items (chan))
+        (initialize))))
 
 (defrecord Item [aisle shelf])
 
@@ -77,7 +80,7 @@
   (box-with (repeatedly items-per-box make-item)))
 
 ;; Shelves
-(defrecord Shelf [items acquire release]
+(defrecord Shelf [items requests]
   Stockable
   (stock [shelf item]
     (claim shelf
@@ -86,15 +89,15 @@
                   (>! items item)
                   item)))))
 
-(make-scarce Shelf stockers-per-shelf :acquire :release)
+(make-scarce Shelf stockers-per-shelf :requests)
 
 (defn make-shelf []
   (let [items (chan (dropping-buffer 0))]
-    (-> (Shelf. items (chan) (chan))
-        (initialize-lock))))
+    (-> (Shelf. items (chan))
+        (initialize))))
 
 ;; Aisles
-(defrecord Aisle [shelves acquire release]
+(defrecord Aisle [shelves requests]
   Stockable
   (stock [aisle item]
     (claim aisle
@@ -103,12 +106,12 @@
                   (<! (stock shelf item))
                   item)))))
 
-(make-scarce Aisle stockers-per-aisle :acquire :release)
+(make-scarce Aisle stockers-per-aisle :requests)
 
 (defn make-aisle []
   (-> (Aisle. (vec (repeatedly shelves-per-aisle make-shelf))
-              (chan) (chan))
-      (initialize-lock)))
+              (chan))
+      (initialize)))
 
 ;; Stockers
 (defn make-stocker [supermarket]
@@ -118,7 +121,7 @@
       (recur))))
 
 ;; Supermarket
-(defrecord Supermarket [aisles boxes num-stockers acquire release]
+(defrecord Supermarket [aisles boxes num-stockers requests]
   Unpackable
   (unpack [supermarket]
     (go-loop [remaining-boxes (shuffle boxes)]
@@ -138,13 +141,13 @@
                   (<! (async/into [] (async/merge stockers)))
                   :done)))))
 
-(make-scarce Supermarket 1 :acquire :release)
+(make-scarce Supermarket 1 :requests)
 
 (defn make-supermarket [num-stockers]
   (-> (Supermarket. (vec (repeatedly num-aisles make-aisle))
                     (set (repeatedly num-boxes make-box))
-                    num-stockers (chan) (chan))
-      (initialize-lock)))
+                    num-stockers (chan))
+      (initialize)))
 
 ;; Simulation
 (defn simulate-stocking [num-stockers]
